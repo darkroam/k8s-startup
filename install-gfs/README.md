@@ -1,37 +1,52 @@
-# recode all commanders
+# How to Startup Gulsterfs and Heketi
 
-<https://www.infvie.com/ops-notes/kubernetes-glusterfs-heketi.html>
-<https://www.cnblogs.com/ssgeek/p/11725648.html>
-<https://github.com/fabric8io/fabric8/issues/6840>
-<https://www.cnblogs.com/breezey/p/8849466.html>
-<https://www.cnblogs.com/netonline/p/10288219.html>
-<https://blog.csdn.net/weixin_34281537/article/details/93427253>
-<https://github.com/heketi/heketi>
-<https://www.cnblogs.com/sirdong/p/12053429.html>
-<http://www.manongjc.com/detail/13-pzrgtlhvlawobtf.html>
+## Setup
 
-ssh k8s-node1
+perpare
 
----
+```bash
 yum install -y centos-release-gluster
 yum -y install ntp device-mapper* glusterfs glusterfs-fuse
+
 ntpdate time.windows.com
+
 systemctl restart docker
+
 docker pull gluster/gluster-centos
+
 modprobe dm_snapshot
 modprobe dm_mirror
 modprobe dm_thin_pool
 
+ lsmod | grep dm_snapshot		#show
+ lsmod | grep dm_mirror
+ lsmod | grep dm_thin_pool
+```
+
+target the node of glusterfs a label
+
+```bash
 kubectl label node k8s-node3 storagenode=glusterfs
 kubectl label node k8s-node4 storagenode=glusterfs
 kubectl label node k8s-node5 storagenode=glusterfs
 
  kubectl get nodes --show-labels  	#show
+```
 
- lsmod | grep dm_snapshot		#show
- lsmod | grep dm_mirror
- lsmod | grep dm_thin_pool
+## build by glusterfs-kubernetes
 
+```bash
+kubectl create namespace storage
+
+./gk-deploy -g -n storage --admin-key 'PASSWORD' --user-key 'PASSWORD'
+
+./gk-deploy --abort -g -n storage --admin-key "PASSWORD" --user-key "PASSWORD"
+```
+
+## build by Heketi
+
+### part A
+```bash
 kubectl apply -f glusterfs-daemonset.json
 
  scp /etc/docker/daemon.json k8s-node1:/etc/docker/
@@ -67,9 +82,11 @@ heketi-cli -s $HEKETI_CLI_SERVER --user admin --secret 'My Secret' topology load
 
  kubectl get pod
  kubectl logs -f deploy-heketi-7bcd7888b-tbqp2
+```
 
----
+### part B
 
+```bash
 heketi-cli -s $HEKETI_CLI_SERVER --user admin --secret 'My Secret' setup-openshift-heketi-storage Saving heketi-storage.json
 
 kubectl apply -f heketi-storage.json
@@ -77,32 +94,22 @@ kubectl apply -f heketi-storage.json
 kubectl delete all,svc,jobs,deployment,secret --selector="deploy-heketi"
 
 kubectl apply -f heketi-deployment.json
+```
 
+## build by hand
 
-
-
----
-
-kubectl create namespace storage
-
-./gk-deploy -g -n storage
-
-
-./gk-deploy -g -n storage --admin-key 'PASSWORD' --user-key 'PASSWORD'
-
-./gk-deploy --abort -g -n storage --admin-key "PASSWORD" --user-key "PASSWORD"
-
-
----
+```bash
 yum install -y centos-release-gluster
 yum install -y glusterfs glusterfs-server glusterfs-fuse glusterfs-rdma
 systemctl start glusterd
 
 gluster peer probe k8s-node3
 gluster peer probe k8s-node4
+```
 
+## output by gk-deploy
 
----
+```
 Using Kubernetes CLI.
 Using namespace "storage".
 Checking for pre-existing resources...
@@ -175,4 +182,17 @@ parameters:
 
 
 Deployment complete!
+```
+
+## Reference
+
+<https://www.infvie.com/ops-notes/kubernetes-glusterfs-heketi.html>
+<https://www.cnblogs.com/ssgeek/p/11725648.html>
+<https://github.com/fabric8io/fabric8/issues/6840>
+<https://www.cnblogs.com/breezey/p/8849466.html>
+<https://www.cnblogs.com/netonline/p/10288219.html>
+<https://blog.csdn.net/weixin_34281537/article/details/93427253>
+<https://github.com/heketi/heketi>
+<https://www.cnblogs.com/sirdong/p/12053429.html>
+<http://www.manongjc.com/detail/13-pzrgtlhvlawobtf.html>
 
