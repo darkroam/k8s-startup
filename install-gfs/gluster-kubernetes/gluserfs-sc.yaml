@@ -1,14 +1,14 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: glusterfs-sc                    #---SorageClass 名称
+  name: glusterfs-sc                   #---SorageClass 名称
 provisioner: kubernetes.io/glusterfs
 reclaimPolicy: Retain
 parameters:
   resturl: "http://10.244.2.16:8080"   #---heketi service的cluster ip 和端口
-  restuser: "admin"                     #---任意填写，因为没有启用鉴权模式
-  restuserkey: "abscni"         #---任意填写，因为没有启用鉴权模式
+  restuser: "admin"                    #---任意填写，因为没有启用鉴权模式
+  restuserkey: "abscni"                #---任意填写，因为没有启用鉴权模式
   gidMin: "40000"
   gidMax: "50000"
-  volumetype: "replicate:3"             #---申请的副本数，默认为3副本模式
+  volumetype: "replicate:3"            #---申请的副本数，默认为3副本模式
 allowVolumeExpansion: true
