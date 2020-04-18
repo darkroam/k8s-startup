@@ -1,6 +1,6 @@
 #!/bin/sh
 
-yum -y install vim
+yum -y install vim ntp
 yum -y install docker-ce
 yum -y install --nogpgcheck kubectl kubeadm kubelet
 
