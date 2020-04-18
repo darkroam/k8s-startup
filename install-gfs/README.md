@@ -46,6 +46,7 @@ kubectl create namespace storage
 ## build by Heketi
 
 ### part A
+
 ```bash
 kubectl apply -f glusterfs-daemonset.json
 
@@ -65,7 +66,7 @@ kubectl create -f heketi-bootstrap.json
 
 kubectl apply -f heketi-deployment.json
 
-cp /root/install-gfs/heketi-client/bin/heketi-cli /usr/local/bin/
+cp heketi-cli /usr/local/bin/
 
  heketi-cli -v
 
@@ -78,7 +79,7 @@ export HEKETI_CLI_SERVER=http://10.1.98.149:8080
 
  echo $HEKETI_CLI_SERVER
 
-heketi-cli -s $HEKETI_CLI_SERVER --user admin --secret 'My Secret' topology load --json=topology.json
+heketi-cli -s $HEKETI_CLI_SERVER --user admin --secret 'My Secret' topology load --json=../topology.json
 
  kubectl get pod
  kubectl logs -f deploy-heketi-7bcd7888b-tbqp2
