@@ -1,0 +1,12 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: myclaim
+  annotations:
+    volume.beta.kubernetes.io/storage-class: "glusterfs-sc"   #---需要与storageclass的名称一致
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi       #---设置请求大小为1G

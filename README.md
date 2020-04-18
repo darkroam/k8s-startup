@@ -23,5 +23,7 @@ yaml info:
 reference:
 1. [k8s-dashboard](github.com/kubernetes/dashboard)
 2. [flannel](github.com/coreos/flannel/)
+3. [heketi](github.com/heketi/heketi)
+4. [gluster-k8s](github.com/gluster/gluster-kubernetes)
 
 
