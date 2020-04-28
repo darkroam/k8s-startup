@@ -2,7 +2,7 @@
 
 ## Setup
 
-perpare
+perpare env
 
 ```bash
 yum install -y centos-release-gluster
@@ -43,147 +43,115 @@ kubectl create namespace storage
 ./gk-deploy --abort -g -n storage --admin-key "PASSWORD" --user-key "PASSWORD"
 ```
 
-## build by Heketi
+## process of buildup
 
-### part A
+0. Checking for pre-existing resources...
+  GlusterFS, deploy-heketi, heketi, gluster-s3 pods ...
+```bash
+kubectl get pods -n storage --selector=glusterfs=pod
+kubectl get pods -n storage --selector=deploy-heketi=pod
+kubectl get pods -n storage --selector=heketi=pod
+kubectl get pods -n storage --selector=glusterfs=s3-pod
+```
+
+1. Creating initial resources ...
+```bash
+kubectl -n storage create -f heketi-service-account.yaml
+kubectl -n storage create clusterrolebinding heketi-sa-view --clusterrole=edit --serviceaccount=storage:heketi-service-account
+kubectl -n storage label --overwrite clusterrolebinding heketi-sa-view glusterfs=heketi-sa-view heketi=sa-view
+```
+
+2. Marking 'k8s-node5', 'k8s-node4', and 'k8s-node3' as a GlusterFS nodes.
+```bash
+kubectl -n storage label nodes k8s-node5 storagenode=glusterfs --overwrite 
+kubectl -n storage label nodes k8s-node4 storagenode=glusterfs --overwrite
+kubectl -n storage label nodes k8s-node3 storagenode=glusterfs --overwrite
+```
+
+3. Deploying GlusterFS pods.
+```bash
+sed -e 's/storagenode\: glusterfs/storagenode\: 'glusterfs'/g' glusterfs-daemonset.yaml | kubectl -n storage create -f - 
+```
+
+4. Waiting for GlusterFS pods to start ...
+```bash
+kubectl get pods -n storage --selector=glusterfs=pod
+```
+
+glusterfs-bsscq   1/1   Running   0     65s
+glusterfs-cjhjx   1/1   Running   0     65s
+glusterfs-zxrx4   1/1   Running   0     65s
 
 ```bash
-kubectl apply -f glusterfs-daemonset.json
-
- scp /etc/docker/daemon.json k8s-node1:/etc/docker/
- systemctl restart docker
- docker pull gluster/gluster-centos	#by hand
-
-kubectl apply -f heketi-service-account.json
-
-kubectl create clusterrolebinding heketi-gluster-admin --clusterrole=edit --serviceaccount=dafault:heketi-service-account
-
-kubectl create secret generic heketi-config-secret --from-file=./heketi.json
-
-kubectl apply -f heketi-service-account-rbac.yaml
-
-kubectl create -f heketi-bootstrap.json
-
-kubectl apply -f heketi-deployment.json
-
-cp heketi-cli /usr/local/bin/
-
- heketi-cli -v
-
- kubectl get svc|grep heketi
-
- curl http://10.1.98.149:8080/hello
- curl http://{deploy-heketi}:8080/hello
-
-export HEKETI_CLI_SERVER=http://10.1.98.149:8080
-
- echo $HEKETI_CLI_SERVER
-
-heketi-cli -s $HEKETI_CLI_SERVER --user admin --secret 'My Secret' topology load --json=../topology.json
-
- kubectl get pod
- kubectl logs -f deploy-heketi-7bcd7888b-tbqp2
+sed -e "s/\${HEKETI_EXECUTOR}/kubernetes/" -e "s#\${HEKETI_FSTAB}#${FSTAB}#" -e "s/\${SSH_PORT}/22/" -e "s/\${SSH_USER}/root/" -e "s/\${SSH_SUDO}/false/" heketi.json.template > heketi.json
+kubectl -n storage create secret generic heketi-config-secret --from-file=private_key=/dev/null --from-file=./heketi.json --from-file=topology.json=../topology.json
+kubectl -n storage label --overwrite secret heketi-config-secret glusterfs=heketi-config-secret heketi=config-secret
+sed -e 's/\${HEKETI_EXECUTOR}/kubernetes/' -e 's#\${HEKETI_FSTAB}#/var/lib/heketi/fstab#' -e 's/\${HEKETI_ADMIN_KEY}/PASSWORD/' -e 's/\${HEKETI_USER_KEY}/PASSWORD/' /root/a/k8s-startup/install-gfs/kube-templates/deploy-heketi-deployment.yaml | kubectl -n storage create -f - 
 ```
 
-### part B
+5. Waiting for deploy-heketi pod to start ...
+```bash
+kubectl get pods -n storage --selector=deploy-heketi=pod
+```
+
+deploy-heketi-689f995694-7hlpd   1/1   Running   0     6s
 
 ```bash
-heketi-cli -s $HEKETI_CLI_SERVER --user admin --secret 'My Secret' setup-openshift-heketi-storage Saving heketi-storage.json
-
-kubectl apply -f heketi-storage.json
-
-kubectl delete all,svc,jobs,deployment,secret --selector="deploy-heketi"
-
-kubectl apply -f heketi-deployment.json
+kubectl -n storage exec -i deploy-heketi-689f995694-7hlpd -- heketi-cli -s http://localhost:8080 --user admin --secret 'PASSWORD' topology load --json=/etc/heketi/topology.json 
 ```
 
-## build by hand
-
-```bash
-yum install -y centos-release-gluster
-yum install -y glusterfs glusterfs-server glusterfs-fuse glusterfs-rdma
-systemctl start glusterd
-
-gluster peer probe k8s-node3
-gluster peer probe k8s-node4
-```
-
-## output by gk-deploy
-
-```
-Using Kubernetes CLI.
-Using namespace "storage".
-Checking for pre-existing resources...
-  GlusterFS pods ... not found.
-  deploy-heketi pod ... not found.
-  heketi pod ... not found.
-  gluster-s3 pod ... not found.
-Creating initial resources ... serviceaccount/heketi-service-account created
-clusterrolebinding.rbac.authorization.k8s.io/heketi-sa-view created
-clusterrolebinding.rbac.authorization.k8s.io/heketi-sa-view labeled
-OK
-node/k8s-node5 labeled
-node/k8s-node4 labeled
-node/k8s-node3 labeled
-daemonset.apps/glusterfs created
-Waiting for GlusterFS pods to start ... OK
-secret/heketi-config-secret created
-secret/heketi-config-secret labeled
-service/deploy-heketi created
-deployment.apps/deploy-heketi created
-Waiting for deploy-heketi pod to start ... OK
-Creating cluster ... ID: 8dfd15256c94c7871d60b54bf64dce39
+Creating cluster ... ID: 4dadfa39688b310ee5626feca90614cc
 Allowing file volumes on cluster.
 Allowing block volumes on cluster.
-Creating node k8s-node5 ... ID: 3bd6b2fa168d481f6d5b30be2b33f8b9
+Creating node k8s-node5 ... ID: bfcefad2bb672c5d4f4dfab1937983e6
 Adding device /dev/vdb ... OK
-Creating node k8s-node4 ... ID: b9315bf05552f699be0ec31b1e508318
+Creating node k8s-node4 ... ID: 04c5a783e913c72c5f209c3aada34a79
 Adding device /dev/vdb ... OK
-Creating node k8s-node3 ... ID: 292a88320447d18b9f83f99fa6d93223
+Creating node k8s-node3 ... ID: 6fa353df1750412239ae435b2f4497a7
 Adding device /dev/vdb ... OK
-heketi topology loaded.
-Saving /tmp/heketi-storage.json
-secret/heketi-storage-secret created
-endpoints/heketi-storage-endpoints created
-service/heketi-storage-endpoints created
-job.batch/heketi-storage-copy-job created
-service/heketi-storage-endpoints labeled
-pod "deploy-heketi-6d769d5dfb-86chq" deleted
-service "deploy-heketi" deleted
-deployment.apps "deploy-heketi" deleted
-replicaset.apps "deploy-heketi-6d769d5dfb" deleted
-job.batch "heketi-storage-copy-job" deleted
-secret "heketi-storage-secret" deleted
-service/heketi created
-deployment.apps/heketi created
-Waiting for heketi pod to start ... OK
 
-heketi is now running and accessible via http://10.244.2.16:8080 . To run
+heketi topology loaded.
+
+6. Persistent heketi configuration
+```bash
+kubectl -n storage exec -i deploy-heketi-689f995694-7hlpd -- heketi-cli -s http://localhost:8080 --user admin --secret 'PASSWORD' setup-openshift-heketi-storage --listfile=/tmp/heketi-storage.json  
+```
+Saving /tmp/heketi-storage.json
+
+```bash
+kubectl -n storage exec -i deploy-heketi-689f995694-7hlpd -- cat /tmp/heketi-storage.json | kubectl -n storage create -f - 
+
+kubectl get pods -n storage --selector=job-name=heketi-storage-copy-job
+```
+
+heketi-storage-copy-job-r4wzv   0/1   Completed   0     6s
+
+```bash
+kubectl -n storage label --overwrite svc heketi-storage-endpoints glusterfs=heketi-storage-endpoints heketi=storage-endpoints
+
+kubectl -n storage delete all,service,jobs,deployment,secret --selector="deploy-heketi"
+
+sed -e 's/\${HEKETI_EXECUTOR}/kubernetes/' -e 's#\${HEKETI_FSTAB}#/var/lib/heketi/fstab#' -e 's/\${HEKETI_ADMIN_KEY}/PASSWORD/' -e 's/\${HEKETI_USER_KEY}/PASSWORD/' heketi-deployment.yaml | kubectl -n storage create -f - 
+```
+
+7.  Done
+Waiting for heketi pod to start ...
+```bash
+kubectl get pods -n storage --selector=heketi=pod
+
+kubectl describe svc/heketi -n storage | grep Endpoints | awk '{print $2}'
+kubectl get pod --no-headers --selector="heketi" -n storage | awk '{print $1}'
+```
+
+heketi is now running and accessible via http://10.244.2.19:8080 . To run
 administrative commands you can install 'heketi-cli' and use it as follows:
 
-  # heketi-cli -s http://10.244.2.16:8080 --user admin --secret '<ADMIN_KEY>' cluster list
+  # heketi-cli -s http://10.244.2.19:8080 --user admin --secret '<ADMIN_KEY>' cluster list
 
-You can find it at https://github.com/heketi/heketi/releases . Alternatively,
 use it from within the heketi pod:
 
-  # /usr/bin/kubectl -n storage exec -i heketi-7656cd7ffd-w8zng -- heketi-cli -s http://localhost:8080 --user admin --secret '<ADMIN_KEY>' cluster list
+  # /usr/bin/kubectl -n storage exec -i heketi-f5f5db468-pphv2 -- heketi-cli -s http://localhost:8080 --user admin --secret '<ADMIN_KEY>' cluster list
 
-For dynamic provisioning, create a StorageClass similar to this:
-
----
-apiVersion: storage.k8s.io/v1beta1
-kind: StorageClass
-metadata:
-  name: glusterfs-storage
-provisioner: kubernetes.io/glusterfs
-parameters:
-  resturl: "http://10.244.2.16:8080"
-  restuser: "user"
-  restuserkey: "PASSWORD"
-
-
-Deployment complete!
-```
 
 ## Reference
 

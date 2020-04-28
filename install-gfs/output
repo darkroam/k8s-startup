@@ -1,0 +1,250 @@
+----- output of startup -----
+
+[root@k8s-master install-gfs]# ./gk-deploy -g -n storage --admin-key 'PASSWORD' --user-key 'PASSWORD'
+Welcome to the deployment tool for GlusterFS on Kubernetes and OpenShift.
+
+Before getting started, this script has some requirements of the execution
+environment and of the container platform that you should verify.
+
+The client machine that will run this script must have:
+ * Administrative access to an existing Kubernetes or OpenShift cluster
+ * Access to a python interpreter 'python'
+
+Each of the nodes that will host GlusterFS must also have appropriate firewall
+rules for the required GlusterFS ports:
+ * 2222  - sshd (if running GlusterFS in a pod)
+ * 24007 - GlusterFS Management
+ * 24008 - GlusterFS RDMA
+ * 49152 to 49251 - Each brick for every volume on the host requires its own
+   port. For every new brick, one new port will be used starting at 49152. We
+   recommend a default range of 49152-49251 on each host, though you can adjust
+   this to fit your needs.
+
+The following kernel modules must be loaded:
+ * dm_snapshot
+ * dm_mirror
+ * dm_thin_pool
+
+For systems with SELinux, the following settings need to be considered:
+ * virt_sandbox_use_fusefs should be enabled on each node to allow writing to
+   remote GlusterFS volumes
+
+In addition, for an OpenShift deployment you must:
+ * Have 'cluster_admin' role on the administrative account doing the deployment
+ * Add the 'default' and 'router' Service Accounts to the 'privileged' SCC
+ * Have a router deployed that is configured to allow apps to access services
+   running in the cluster
+
+Do you wish to proceed with deployment?
+
+[Y]es, [N]o? [Default: Y]:
+Using Kubernetes CLI.
+
+Checking status of namespace matching 'storage':
+storage   Active   3d1h
+Using namespace "storage".
+Checking for pre-existing resources...
+  GlusterFS pods ...
+Checking status of pods matching '--selector=glusterfs=pod':
+
+Timed out waiting for pods matching '--selector=glusterfs=pod'.
+not found.
+  deploy-heketi pod ...
+Checking status of pods matching '--selector=deploy-heketi=pod':
+
+Timed out waiting for pods matching '--selector=deploy-heketi=pod'.
+not found.
+  heketi pod ...
+Checking status of pods matching '--selector=heketi=pod':
+
+Timed out waiting for pods matching '--selector=heketi=pod'.
+not found.
+  gluster-s3 pod ...
+Checking status of pods matching '--selector=glusterfs=s3-pod':
+
+Timed out waiting for pods matching '--selector=glusterfs=s3-pod'.
+not found.
+Creating initial resources ... /usr/bin/kubectl -n storage create -f /root/a/k8s-startup/install-gfs/kube-templates/heketi-service-account.yaml 2>&1
+serviceaccount/heketi-service-account created
+/usr/bin/kubectl -n storage create clusterrolebinding heketi-sa-view --clusterrole=edit --serviceaccount=storage:heketi-service-account 2>&1
+clusterrolebinding.rbac.authorization.k8s.io/heketi-sa-view created
+/usr/bin/kubectl -n storage label --overwrite clusterrolebinding heketi-sa-view glusterfs=heketi-sa-view heketi=sa-view
+clusterrolebinding.rbac.authorization.k8s.io/heketi-sa-view labeled
+OK
+Marking 'k8s-node5' as a GlusterFS node.
+/usr/bin/kubectl -n storage label nodes k8s-node5 storagenode=glusterfs --overwrite 2>&1
+node/k8s-node5 labeled
+Marking 'k8s-node4' as a GlusterFS node.
+/usr/bin/kubectl -n storage label nodes k8s-node4 storagenode=glusterfs --overwrite 2>&1
+node/k8s-node4 labeled
+Marking 'k8s-node3' as a GlusterFS node.
+/usr/bin/kubectl -n storage label nodes k8s-node3 storagenode=glusterfs --overwrite 2>&1
+node/k8s-node3 labeled
+Deploying GlusterFS pods.
+sed -e 's/storagenode\: glusterfs/storagenode\: 'glusterfs'/g' /root/a/k8s-startup/install-gfs/kube-templates/glusterfs-daemonset.yaml | /usr/bin/kubectl -n storage create -f - 2>&1
+daemonset.apps/glusterfs created
+Waiting for GlusterFS pods to start ...
+Checking status of pods matching '--selector=glusterfs=pod':
+glusterfs-bsscq   1/1   Running   0     65s
+glusterfs-cjhjx   1/1   Running   0     65s
+glusterfs-zxrx4   1/1   Running   0     65s
+OK
+/usr/bin/kubectl -n storage create secret generic heketi-config-secret --from-file=private_key=/dev/null --from-file=./heketi.json --from-file=topology.json=topology.json
+secret/heketi-config-secret created
+/usr/bin/kubectl -n storage label --overwrite secret heketi-config-secret glusterfs=heketi-config-secret heketi=config-secret
+secret/heketi-config-secret labeled
+sed -e 's/\${HEKETI_EXECUTOR}/kubernetes/' -e 's#\${HEKETI_FSTAB}#/var/lib/heketi/fstab#' -e 's/\${HEKETI_ADMIN_KEY}/PASSWORD/' -e 's/\${HEKETI_USER_KEY}/PASSWORD/' /root/a/k8s-startup/install-gfs/kube-templates/deploy-heketi-deployment.yaml | /usr/bin/kubectl -n storage create -f - 2>&1
+service/deploy-heketi created
+deployment.apps/deploy-heketi created
+Waiting for deploy-heketi pod to start ...
+Checking status of pods matching '--selector=deploy-heketi=pod':
+deploy-heketi-689f995694-7hlpd   1/1   Running   0     6s
+OK
+Determining heketi service URL ... OK
+/usr/bin/kubectl -n storage exec -i deploy-heketi-689f995694-7hlpd -- heketi-cli -s http://localhost:8080 --user admin --secret 'PASSWORD' topology load --json=/etc/heketi/topology.json 2>&1
+Creating cluster ... ID: 4dadfa39688b310ee5626feca90614cc
+Allowing file volumes on cluster.
+Allowing block volumes on cluster.
+Creating node k8s-node5 ... ID: bfcefad2bb672c5d4f4dfab1937983e6
+Adding device /dev/vdb ... OK
+Creating node k8s-node4 ... ID: 04c5a783e913c72c5f209c3aada34a79
+Adding device /dev/vdb ... OK
+Creating node k8s-node3 ... ID: 6fa353df1750412239ae435b2f4497a7
+Adding device /dev/vdb ... OK
+heketi topology loaded.
+/usr/bin/kubectl -n storage exec -i deploy-heketi-689f995694-7hlpd -- heketi-cli -s http://localhost:8080 --user admin --secret 'PASSWORD' setup-openshift-heketi-storage --listfile=/tmp/heketi-storage.json  2>&1
+Saving /tmp/heketi-storage.json
+/usr/bin/kubectl -n storage exec -i deploy-heketi-689f995694-7hlpd -- cat /tmp/heketi-storage.json | /usr/bin/kubectl -n storage create -f - 2>&1
+secret/heketi-storage-secret created
+endpoints/heketi-storage-endpoints created
+service/heketi-storage-endpoints created
+job.batch/heketi-storage-copy-job created
+
+Checking status of pods matching '--selector=job-name=heketi-storage-copy-job':
+heketi-storage-copy-job-r4wzv   0/1   Completed   0     6s
+/usr/bin/kubectl -n storage label --overwrite svc heketi-storage-endpoints glusterfs=heketi-storage-endpoints heketi=storage-endpoints
+service/heketi-storage-endpoints labeled
+/usr/bin/kubectl -n storage delete all,service,jobs,deployment,secret --selector="deploy-heketi" 2>&1
+pod "deploy-heketi-689f995694-7hlpd" deleted
+service "deploy-heketi" deleted
+deployment.apps "deploy-heketi" deleted
+replicaset.apps "deploy-heketi-689f995694" deleted
+job.batch "heketi-storage-copy-job" deleted
+secret "heketi-storage-secret" deleted
+sed -e 's/\${HEKETI_EXECUTOR}/kubernetes/' -e 's#\${HEKETI_FSTAB}#/var/lib/heketi/fstab#' -e 's/\${HEKETI_ADMIN_KEY}/PASSWORD/' -e 's/\${HEKETI_USER_KEY}/PASSWORD/' /root/a/k8s-startup/install-gfs/kube-templates/heketi-deployment.yaml | /usr/bin/kubectl -n storage create -f - 2>&1
+service/heketi created
+deployment.apps/heketi created
+Waiting for heketi pod to start ...
+Checking status of pods matching '--selector=heketi=pod':
+heketi-f5f5db468-pphv2   1/1   Running   0     6s
+OK
+Determining heketi service URL ... OK
+
+heketi is now running and accessible via http://10.244.2.19:8080 . To run
+administrative commands you can install 'heketi-cli' and use it as follows:
+
+  # heketi-cli -s http://10.244.2.19:8080 --user admin --secret '<ADMIN_KEY>' cluster list
+
+You can find it at https://github.com/heketi/heketi/releases . Alternatively,
+use it from within the heketi pod:
+
+  # /usr/bin/kubectl -n storage exec -i heketi-f5f5db468-pphv2 -- heketi-cli -s http://localhost:8080 --user admin --secret '<ADMIN_KEY>' cluster list
+
+For dynamic provisioning, create a StorageClass similar to this:
+
+---
+apiVersion: storage.k8s.io/v1beta1
+kind: StorageClass
+metadata:
+  name: glusterfs-storage
+provisioner: kubernetes.io/glusterfs
+parameters:
+  resturl: "http://10.244.2.19:8080"
+  restuser: "user"
+  restuserkey: "PASSWORD"
+
+
+Deployment complete!
+
+[root@k8s-master install-gfs]#
+
+
+
+----- output of abort -----
+
+[root@k8s-master install-gfs]#  ./gk-deploy --abort -g -n storage --admin-key 'PASSWORD' --user-key 'PASSWORD'
+Using Kubernetes CLI.
+
+Checking status of namespace matching 'storage':
+storage   Active   10d
+Using namespace "storage".
+Do you wish to abort the deployment?
+[Y]es, [N]o? [Default: N]: y
+Removing heketi resources.
+/usr/bin/kubectl -n storage delete all,svc,jobs,deploy,secret --selector="deploy-heketi" 2>&1
+No resources found
+/usr/bin/kubectl -n storage delete all,svc,deploy,secret,sa,clusterrolebinding --selector="heketi" 2>&1
+pod "heketi-f5f5db468-pphv2" deleted
+service "heketi" deleted
+service "heketi-storage-endpoints" deleted
+deployment.apps "heketi" deleted
+replicaset.apps "heketi-f5f5db468" deleted
+secret "heketi-config-secret" deleted
+serviceaccount "heketi-service-account" deleted
+warning: deleting cluster-scoped resources, not scoped to the provided namespace
+clusterrolebinding.rbac.authorization.k8s.io "heketi-sa-view" deleted
+/usr/bin/kubectl -n storage delete svc heketi-storage-endpoints 2>&1
+Error from server (NotFound): services "heketi-storage-endpoints" not found
+Removing gluster-s3 resources.
+/usr/bin/kubectl -n storage delete all,svc,deploy,secret,sc --selector="gluster-s3" 2>&1
+No resources found
+Removing label from 'k8s-node5' as a GlusterFS node.
+/usr/bin/kubectl -n storage label nodes "k8s-node5" storagenode- 2>&1
+node/k8s-node5 labeled
+Removing label from 'k8s-node4' as a GlusterFS node.
+/usr/bin/kubectl -n storage label nodes "k8s-node4" storagenode- 2>&1
+node/k8s-node4 labeled
+Removing label from 'k8s-node3' as a GlusterFS node.
+/usr/bin/kubectl -n storage label nodes "k8s-node3" storagenode- 2>&1
+node/k8s-node3 labeled
+Removing glusterfs daemonset.
+/usr/bin/kubectl -n storage delete ds --selector="glusterfs" 2>&1
+daemonset.apps "glusterfs" deleted
+[root@k8s-master install-gfs]#
+
+
+
+----- output of test -----
+
+[root@k8s-master test]# kubectl apply -f gluserfs-sc.yaml
+storageclass.storage.k8s.io/glusterfs-sc created
+[root@k8s-master test]# kubectl apply -f nginx-deployment-gluster.yaml
+deployment.apps/nginx-gfs created
+persistentvolumeclaim/glusterfs-nginx-html created
+persistentvolumeclaim/glusterfs-nginx-conf created
+[root@k8s-master test]# kubectl get pod,pv,pvc|grep nginx
+pod/nginx-f89759699-xhmvl        1/1     Running   1          11d
+pod/nginx-gfs-79c74b4b5d-clm5d   1/1     Running   0          19s
+pod/nginx-gfs-79c74b4b5d-j9plr   1/1     Running   0          19s
+persistentvolume/pvc-2db1cdfa-c7d4-40eb-9faa-959eb0a9b34c   1Gi        RWX            Retain           Bound    default/glusterfs                                                                                                                                                                             nginx-html   glusterfs-sc            16s
+persistentvolume/pvc-d67333eb-9a24-4023-a639-1d2a3180c1e2   1Gi        RWX            Retain           Bound    default/glusterfs                                                                                                                                                                             nginx-conf   glusterfs-sc            16s
+persistentvolumeclaim/glusterfs-nginx-conf   Bound    pvc-d67333eb-9a24-4023-a639-1d2a3180c1e2   1Gi        RWX            gluster                                                                                                                                                                            fs-sc   19s
+persistentvolumeclaim/glusterfs-nginx-html   Bound    pvc-2db1cdfa-c7d4-40eb-9faa-959eb0a9b34c   1Gi        RWX            gluster                                                                                                                                                                            fs-sc   19s
+[root@k8s-master test]# kubectl exec -it pod/nginx-gfs-79c74b4b5d-clm5d -- df -Th
+Filesystem                                          Type            Size  Used Avail Use% Mounted on
+overlay                                             overlay          50G  3.5G   47G   7% /
+tmpfs                                               tmpfs            64M     0   64M   0% /dev
+tmpfs                                               tmpfs           3.9G     0  3.9G   0% /sys/fs/cgroup
+/dev/mapper/centos-root                             xfs              50G  3.5G   47G   7% /etc/hosts
+shm                                                 tmpfs            64M     0   64M   0% /dev/shm
+192.168.68.230:vol_e6442fdb1896510ad29e356b11a9a820 fuse.glusterfs 1014M   43M  972M   5% /etc/nginx/conf.d
+192.168.68.230:vol_c709d0bcf552060fb3dd2d1450e171de fuse.glusterfs 1014M   43M  972M   5% /usr/share/nginx/html
+tmpfs                                               tmpfs           3.9G   12K  3.9G   1% /run/secrets/kubernetes.io/serviceaccoun                                                                                                                                                                            t
+tmpfs                                               tmpfs           3.9G     0  3.9G   0% /proc/acpi
+tmpfs                                               tmpfs           3.9G     0  3.9G   0% /proc/scsi
+tmpfs                                               tmpfs           3.9G     0  3.9G   0% /sys/firmware
+[root@k8s-master test]# mount -t glusterfs 192.168.68.230:vol_c709d0bcf552060fb3dd2d1450e171de /mnt
+[root@k8s-master test]# echo "hello z">/mnt/index.html
+[root@k8s-master test]# kubectl exec -it pod/nginx-gfs-79c74b4b5d-clm5d -- cat /usr/share/nginx/html/index.html
+hello z
+[root@k8s-master test]#
